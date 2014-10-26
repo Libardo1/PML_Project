@@ -1,0 +1,99 @@
+---
+title: "PML_Project"
+author: "Libardo Lopez"
+date: "Friday, October 24, 2014"
+output:
+  html_document:
+    keep_md: yes
+---
+This project models and predicts the user activity from wearable sensors.
+
+```{r , include=FALSE}
+options(warn =-1)
+setwd("G:/Proyectos/2014/Libardo/PML/")
+library(knitr)
+library(caret)
+library(randomForest)
+set.seed(7890)
+opts_knit$set(fig.keep='high', fig.path='figures/', dev='png', fig.width = 9, fig.height = 5, warning=FALSE, message=FALSE)
+```
+
+##Preprocessing
+ We load the training and test data sets. Initially there are 160 variables.
+  
+```{r load_data, echo=FALSE, include=FALSE}
+training.url  <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv'
+test.url <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'
+training.file <- read.csv("G:/Proyectos/2014/Libardo/PML/pml-training.csv", na.strings=c("", "NA", "#DIV/0!"))
+test.file <- read.csv("G:/Proyectos/2014/Libardo/PML/pml-test.csv", na.strings=c("", "NA", "#DIV/0!"))
+```
+All preprocess methods would be apply to both datasets.  
+In order to reduce the variables for the model, we follow this strategy  
+ Missing values: Verify columns with nas < 10%; if so, make Imputation. If not, elliminate them.  
+ Near Zero Variance: If so, elliminate them.  
+ Correlated Predictors: If abs(correlation) > 0.86, elliminate them.  
+
+```{r emptycols, echo=FALSE, include=FALSE}
+filtered.training <- training.file[-(1:7)]
+test.file <- test.file[-(1:7)]
+has_nas <- colSums(is.na(filtered.training)) < 0.9*nrow(filtered.training)
+filtered.training <- filtered.training[ , has_nas]
+test.file <- test.file[ , has_nas]
+```
+```{r NZV, echo=FALSE, include=FALSE}
+#Near zero Variance
+nzv <- nearZeroVar(filtered.training)
+nzv
+ifelse(nzv > 0, filtered.training[, -nzv], filtered.training )
+```
+```{r high_corr, echo=FALSE, include=FALSE}
+descrCor <- cor(filtered.training[ ,-53])
+highCorr <- sum(abs(descrCor[upper.tri(descrCor)]) > 0.86)
+highlyCorDescr <- findCorrelation(descrCor, cutoff = 0.86)
+filtered.training <- filtered.training[, -highlyCorDescr]
+filtered.training
+```
+We elliminate 13 high correlated variables.  
+I verify linear combination of variables but the result was none.  
+At the end, we have 44 predictors and split it into 70% for training and 30% for testing.  
+(You can see all the **R code** in the .Rmd File)  
+
+```{r splitting, echo=FALSE, include=FALSE}
+data <- createDataPartition(y=filtered.training$classe, p=0.7, list=FALSE )
+training <- filtered.training[data,]
+testing <- filtered.training[-data,]
+```
+
+##Modeling
+I try with random forest because it has very good performance with classification tasks.  
+I run **rf** alone and with **cv**; but **cv** is very time consuming. The results are very similar.  
+Finally, i run an option with 7 variables randomly sampled as candidates at each split (mtry=7).  
+
+```{r rfmodel}
+random.forest <- train(training[,-45], training$classe, tuneGrid=data.frame(mtry=7), trControl=trainControl(method="none"))
+```
+Now, we made prediction with the model on testing file and verify results
+```{r prediction}
+confusionMatrix(predict(random.forest, newdata=testing[,-45]), testing$classe)
+```
+The results are excellent with a very hig accuracy, we do not have overfitting.  
+Now, we can see the importance of each variable for the model.  
+```{r}
+plot(varImp(random.forest), main ="Variables Importance Random Forest Model")
+```
+
+##Prediction
+```{r prediction2}
+Model_evaluation <- predict(random.forest, test.file)
+summary(Model_evaluation)
+```
+
+##Conclusions
+- Preprocess is a very important task in order to obtain good models
+- Random Forest has a very good performance on classification tasks
+- If we need to improve our model, we can think about uses PCA and compare results (not included)
+
+
+
+
+
